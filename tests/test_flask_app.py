@@ -14,4 +14,4 @@ def client():
 def test_hello(client):
     rv = client.get("/")
     assert rv.status_code == 200
-    assert b"Welcome to the Main Page" in rv.data
+    assert b"Timeline" in rv.data
