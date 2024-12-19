@@ -1,5 +1,7 @@
 import pytest
+
 from app import create_app
+
 
 @pytest.fixture
 def client():
@@ -7,6 +9,7 @@ def client():
     app.config['TESTING'] = True
     with app.test_client() as client:
         yield client
+
 
 def test_hello(client):
     rv = client.get('/')
