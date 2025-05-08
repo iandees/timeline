@@ -2,47 +2,74 @@
 
 {% block title %}Timeline - Timeline App{% endblock %}
 
+{% block head %}
+{{ super() }}
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@3.1.0/dist/maplibre-gl.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@3.1.0/dist/maplibre-gl.min.js"></script>
+<style>
+    .map-container {
+        position: sticky;
+        top: 20px;
+        height: calc(100vh - 40px);
+    }
+    #map {
+        width: 100%;
+        height: 100%;
+        border-radius: 4px;
+    }
+    .timeline-column {
+        max-height: 100vh;
+        overflow-y: auto;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container mt-4">
-    <!-- Date Navigation -->
-    <div class="row mb-4">
-        <div class="col-md-8 offset-md-2">
-            <div class="card">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <a href="{{ url_for('main.timeline', date=yesterday) }}" class="btn btn-outline-primary">
-                            <i class="bi bi-chevron-left"></i> Previous Day
-                        </a>
-
-                        <div class="date-selector">
-                            <form method="GET" action="{{ url_for('main.timeline') }}" class="d-flex">
-                                <input type="date" name="date" class="form-control" value="{{ current_date }}" onchange="this.form.submit()">
-                            </form>
-                        </div>
-
-                        <a href="{{ url_for('main.timeline', date=tomorrow) }}" class="btn btn-outline-primary">
-                            Next Day <i class="bi bi-chevron-right"></i>
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Timeline Content -->
+<div class="container-fluid mt-4">
     <div class="row">
-        <div class="col-md-8 offset-md-2">
-            <!-- Add new event button -->
-            <div class="mb-3 text-end">
-                <a href="{{ url_for('main.add_event', date=current_date) }}" class="btn btn-primary">
-                    <i class="bi bi-plus-circle"></i> Add Event
-                </a>
+        <!-- Timeline Column (Left 30%) -->
+        <div class="col-md-4 timeline-column">
+            <!-- Date Navigation -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    {% if location %}
+                        <!-- Location view header -->
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h4 class="mb-0">
+                                <i class="bi bi-geo-alt"></i> {{ location.place_name }}
+                            </h4>
+                            <a href="{{ url_for('main.timeline') }}" class="btn btn-outline-secondary">
+                                <i class="bi bi-x"></i> Clear Filter
+                            </a>
+                        </div>
+                        <p class="text-muted mb-0">
+                            <small>{{ location.latitude|round(6) }}, {{ location.longitude|round(6) }}</small>
+                        </p>
+                    {% else %}
+                        <!-- Regular date navigation -->
+                        <div class="d-flex justify-content-between align-items-center">
+                            <a href="{{ url_for('main.timeline', date=yesterday) }}" class="btn btn-outline-primary">
+                                <i class="bi bi-chevron-left"></i> Previous
+                            </a>
+
+                            <div class="date-selector">
+                                <form method="GET" action="{{ url_for('main.timeline') }}" class="d-flex">
+                                    <input type="date" name="date" class="form-control" value="{{ current_date }}" onchange="this.form.submit()">
+                                </form>
+                            </div>
+
+                            <a href="{{ url_for('main.timeline', date=tomorrow) }}" class="btn btn-outline-primary">
+                                Next <i class="bi bi-chevron-right"></i>
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
             </div>
 
             {% if events %}
                 <div class="timeline-container">
                     {% for event in events %}
-                    <div class="timeline-item card mb-3">
+                    <div class="timeline-item card mb-3" data-event-id="{{ event.id }}">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <span class="badge rounded-pill {% if event.event_type == 'meal' %}bg-success{% elif event.event_type == 'travel' %}bg-info{% elif event.event_type == 'hygiene' %}bg-primary{% else %}bg-secondary{% endif %}">
                                 {{ event.event_type }}
@@ -52,7 +79,9 @@
                         <div class="card-body">
                             <h5 class="card-title">{{ event.title }}</h5>
                             {% if event.location %}
-                            <p class="card-text"><small class="text-muted"><i class="bi bi-geo-alt"></i> {{ event.location.place_name or "Unknown location" }}</small></p>
+                            <p class="card-text location-info" data-lat="{{ event.location.latitude }}" data-lng="{{ event.location.longitude }}">
+                                <small class="text-muted"><i class="bi bi-geo-alt"></i> {{ event.location.place_name or "Unknown location" }}</small>
+                            </p>
                             {% endif %}
                         </div>
                         <div class="card-footer d-flex justify-content-end">
@@ -76,6 +105,106 @@
                 </div>
             {% endif %}
         </div>
+
+        <!-- Map Column (Right 70%) -->
+        <div class="col-md-8">
+            <div class="map-container">
+                <div id="map"></div>
+            </div>
+        </div>
     </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // Initialize the map
+    const map = new maplibregl.Map({
+        container: 'map',
+        style: 'https://demotiles.maplibre.org/style.json',
+        center: [0, 0],
+        zoom: 2
+    });
+
+    // Add navigation controls
+    map.addControl(new maplibregl.NavigationControl());
+
+    // Track all event locations to fit bounds later
+    const markers = [];
+    const bounds = new maplibregl.LngLatBounds();
+    let hasLocations = false;
+
+    // Add markers for each event with a location
+    document.querySelectorAll('.location-info').forEach(function(element) {
+        const lat = parseFloat(element.dataset.lat);
+        const lng = parseFloat(element.dataset.lng);
+        const eventId = element.closest('.timeline-item').dataset.eventId;
+
+        if (!isNaN(lat) && !isNaN(lng)) {
+            hasLocations = true;
+            bounds.extend([lng, lat]);
+
+            // Create marker
+            const marker = new maplibregl.Marker({
+                color: getEventTypeColor(element.closest('.timeline-item').querySelector('.badge').textContent.trim())
+            })
+            .setLngLat([lng, lat])
+            .addTo(map);
+
+            // Add popup
+            const popupContent = `
+                <strong>${element.closest('.card-body').querySelector('.card-title').textContent}</strong><br>
+                ${element.textContent.trim()}
+            `;
+
+            const popup = new maplibregl.Popup({ offset: 25 })
+                .setHTML(popupContent);
+
+            marker.setPopup(popup);
+
+            // Store marker reference with event id
+            markers.push({ id: eventId, marker: marker });
+        }
+    });
+
+    // Fit map to bounds if we have locations
+    if (hasLocations) {
+        map.fitBounds(bounds, {
+            padding: 50,
+            maxZoom: 15
+        });
+    }
+
+    // Highlight event when hovering over marker
+    document.querySelectorAll('.timeline-item').forEach(function(item) {
+        item.addEventListener('mouseenter', function() {
+            const eventId = this.dataset.eventId;
+            const markerObj = markers.find(m => m.id === eventId);
+            if (markerObj) {
+                markerObj.marker.getElement().classList.add('marker-highlight');
+            }
+        });
+
+        item.addEventListener('mouseleave', function() {
+            const eventId = this.dataset.eventId;
+            const markerObj = markers.find(m => m.id === eventId);
+            if (markerObj) {
+                markerObj.marker.getElement().classList.remove('marker-highlight');
+            }
+        });
+    });
+
+    // Helper function to get marker color based on event type
+    function getEventTypeColor(eventType) {
+        switch(eventType.toLowerCase()) {
+            case 'meal': return '#198754'; // success green
+            case 'travel': return '#0dcaf0'; // info blue
+            case 'hygiene': return '#0d6efd'; // primary blue
+            case 'work': return '#6c757d'; // secondary gray
+            case 'social': return '#ffc107'; // warning yellow
+            case 'exercise': return '#fd7e14'; // orange
+            default: return '#6c757d'; // secondary gray
+        }
+    }
+});
+</script>
 {% endblock %}

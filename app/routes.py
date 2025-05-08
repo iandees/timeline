@@ -5,7 +5,7 @@ from flask_login import login_required, current_user, logout_user, login_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from . import db
-from .model import Event, User
+from .model import Event, User, Location
 
 # Create blueprint
 main_bp = Blueprint('main', __name__)
@@ -141,6 +141,9 @@ def add_event():
     # Format today's date for the form
     today_date = datetime.now().strftime('%Y-%m-%d')
 
+    # Get user's locations for the dropdown
+    user_locations = Location.query.filter_by(user_id=current_user.id).all()
+
     if request.method == 'POST':
         # Extract form data
         event_type = request.form.get('event_type')
@@ -148,8 +151,32 @@ def add_event():
         date_str = request.form.get('date')
         start_time_str = request.form.get('start_time')
         end_time_str = request.form.get('end_time')
-        location = request.form.get('location')
+        location_id = request.form.get('location_id')
         notes = request.form.get('notes')
+
+        # Handle new location creation
+        if location_id == 'new':
+            place_name = request.form.get('place_name')
+            latitude = request.form.get('latitude')
+            longitude = request.form.get('longitude')
+
+            # Validate new location data
+            if place_name and latitude and longitude:
+                # Create new location
+                new_location = Location(
+                    user_id=current_user.id,
+                    place_name=place_name,
+                    latitude=float(latitude),
+                    longitude=float(longitude)
+                )
+                db.session.add(new_location)
+                db.session.flush()  # This assigns an ID to new_location
+
+                # Use the new location for this event
+                location_id = new_location.id
+            else:
+                # If new location data is incomplete, don't assign a location
+                location_id = None
 
         # Combine date and time strings
         start_datetime = datetime.strptime(f"{date_str} {start_time_str}", '%Y-%m-%d %H:%M')
@@ -169,10 +196,9 @@ def add_event():
             notes=notes
         )
 
-        # Handle location if provided
-        if location:
-            # This is simplified - you'd likely have a Location model
-            new_event.location_name = location
+        # Set location if provided
+        if location_id and location_id != 'new':
+            new_event.location_id = location_id
 
         # Add to database
         db.session.add(new_event)
@@ -183,8 +209,9 @@ def add_event():
         # Redirect to the timeline for the event's date
         return redirect(url_for('main.timeline', date=date_str))
 
-    return render_template('add_event.html', today_date=today_date)
-
+    return render_template('add_event.html',
+                          today_date=today_date,
+                          locations=user_locations)
 
 @main_bp.route('/edit_event/<int:event_id>', methods=['GET', 'POST'])
 @login_required
@@ -285,6 +312,86 @@ def delete_event(event_id):
                            event_date=event_date,
                            event_start_time=event_start_time,
                            event_end_time=event_end_time)
+
+# Locations routes
+@main_bp.route('/locations', methods=['GET'])
+@login_required
+def locations():
+    # Get all locations for the current user
+    user_locations = Location.query.filter_by(user_id=current_user.id).all()
+    return render_template('locations.html', locations=user_locations)
+
+
+@main_bp.route('/locations/add', methods=['GET', 'POST'])
+@login_required
+def add_location():
+    if request.method == 'POST':
+        place_name = request.form.get('place_name')
+        latitude = float(request.form.get('latitude'))
+        longitude = float(request.form.get('longitude'))
+
+        new_location = Location(
+            user_id=current_user.id,
+            place_name=place_name,
+            latitude=latitude,
+            longitude=longitude
+        )
+
+        db.session.add(new_location)
+        db.session.commit()
+
+        flash('Location added successfully!', 'success')
+        return redirect(url_for('main.locations'))
+
+    # Default to a central map position
+    default_lat = 0
+    default_lon = 0
+
+    return render_template('location_form.html',
+                           location=None,
+                           latitude=default_lat,
+                           longitude=default_lon,
+                           title="Add New Location")
+
+
+@main_bp.route('/locations/edit/<int:location_id>', methods=['GET', 'POST'])
+@login_required
+def edit_location(location_id):
+    location = Location.query.filter_by(id=location_id, user_id=current_user.id).first_or_404()
+
+    if request.method == 'POST':
+        location.place_name = request.form.get('place_name')
+        location.latitude = float(request.form.get('latitude'))
+        location.longitude = float(request.form.get('longitude'))
+
+        db.session.commit()
+        flash('Location updated successfully!', 'success')
+        return redirect(url_for('main.locations'))
+
+    return render_template('location_form.html',
+                           location=location,
+                           latitude=location.latitude,
+                           longitude=location.longitude,
+                           title="Edit Location")
+
+
+@main_bp.route('/locations/delete/<int:location_id>', methods=['GET', 'POST'])
+@login_required
+def delete_location(location_id):
+    location = Location.query.filter_by(id=location_id, user_id=current_user.id).first_or_404()
+
+    if request.method == 'POST':
+        # Check if location is used by any events
+        if location.events:
+            flash('Cannot delete location that is used by events.', 'danger')
+            return redirect(url_for('main.locations'))
+
+        db.session.delete(location)
+        db.session.commit()
+        flash('Location deleted successfully!', 'success')
+        return redirect(url_for('main.locations'))
+
+    return render_template('delete_location_confirm.html', location=location)
 
 # API routes for mobile/AJAX access
 @main_bp.route('/api/events', methods=['GET'])
