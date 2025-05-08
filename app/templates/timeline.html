@@ -1,0 +1,81 @@
+{% extends "_base.html" %}
+
+{% block title %}Timeline - Timeline App{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Date Navigation -->
+    <div class="row mb-4">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <a href="{{ url_for('main.timeline', date=yesterday) }}" class="btn btn-outline-primary">
+                            <i class="bi bi-chevron-left"></i> Previous Day
+                        </a>
+
+                        <div class="date-selector">
+                            <form method="GET" action="{{ url_for('main.timeline') }}" class="d-flex">
+                                <input type="date" name="date" class="form-control" value="{{ current_date }}" onchange="this.form.submit()">
+                            </form>
+                        </div>
+
+                        <a href="{{ url_for('main.timeline', date=tomorrow) }}" class="btn btn-outline-primary">
+                            Next Day <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Timeline Content -->
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <!-- Add new event button -->
+            <div class="mb-3 text-end">
+                <a href="{{ url_for('main.add_event', date=current_date) }}" class="btn btn-primary">
+                    <i class="bi bi-plus-circle"></i> Add Event
+                </a>
+            </div>
+
+            {% if events %}
+                <div class="timeline-container">
+                    {% for event in events %}
+                    <div class="timeline-item card mb-3">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span class="badge rounded-pill {% if event.event_type == 'meal' %}bg-success{% elif event.event_type == 'travel' %}bg-info{% elif event.event_type == 'hygiene' %}bg-primary{% else %}bg-secondary{% endif %}">
+                                {{ event.event_type }}
+                            </span>
+                            <small class="text-muted">{{ event.start_time.strftime('%H:%M') }}{% if event.end_time %} - {{ event.end_time.strftime('%H:%M') }}{% endif %}</small>
+                        </div>
+                        <div class="card-body">
+                            <h5 class="card-title">{{ event.title }}</h5>
+                            {% if event.location %}
+                            <p class="card-text"><small class="text-muted"><i class="bi bi-geo-alt"></i> {{ event.location.place_name or "Unknown location" }}</small></p>
+                            {% endif %}
+                        </div>
+                        <div class="card-footer d-flex justify-content-end">
+                            <a href="{{ url_for('main.edit_event', event_id=event.id) }}" class="btn btn-sm btn-outline-secondary me-2">Edit</a>
+                            <form method="POST" action="{{ url_for('main.delete_event', event_id=event.id) }}" onsubmit="return confirm('Are you sure you want to delete this event?')">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="card">
+                    <div class="card-body text-center py-5">
+                        <h4>No events for this day</h4>
+                        <p class="text-muted">Start tracking your activities by adding an event</p>
+                        <a href="{{ url_for('main.add_event', date=current_date) }}" class="btn btn-primary mt-2">
+                            <i class="bi bi-plus-circle"></i> Add First Event
+                        </a>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
