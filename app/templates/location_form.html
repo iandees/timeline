@@ -92,7 +92,7 @@
         // Set up the map
         const map = new maplibregl.Map({
             container: 'map',
-            style: 'https://demotiles.maplibre.org/style.json',
+            style: "https://api.protomaps.com/styles/v5/light/en.json?key={{ config.get('PROTOMAPS_API_KEY') }}",
             center: [initialLng, initialLat],
             zoom: initialLng === 0 && initialLat === 0 ? 2 : 12
         });

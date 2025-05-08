@@ -120,7 +120,7 @@ document.addEventListener("DOMContentLoaded", function() {
     // Initialize the map
     const map = new maplibregl.Map({
         container: 'map',
-        style: 'https://demotiles.maplibre.org/style.json',
+        style: "https://api.protomaps.com/styles/v5/light/en.json?key={{ config.get('PROTOMAPS_API_KEY') }}",
         center: [0, 0],
         zoom: 2
     });

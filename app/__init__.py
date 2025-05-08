@@ -1,4 +1,5 @@
 import os
+from app.config import config
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -10,19 +11,11 @@ migrate = Migrate()
 login_manager = LoginManager()
 
 
-def create_app(config=None):
-    app = Flask(__name__, instance_relative_config=True)
+def create_app(config_name='default'):
+    app = Flask(__name__)
 
     # Default configuration
-    app.config.from_mapping(
-        SECRET_KEY=os.environ.get('SECRET_KEY', 'dev'),
-        SQLALCHEMY_DATABASE_URI=os.environ.get('DATABASE_URL', 'sqlite:///timeline.db'),
-        SQLALCHEMY_TRACK_MODIFICATIONS=False,
-    )
-
-    # Override with custom config if provided
-    if config:
-        app.config.update(config)
+    app.config.from_object(config[config_name])
 
     # Ensure instance folder exists
     try:
