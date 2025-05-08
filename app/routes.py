@@ -1,19 +1,24 @@
-from datetime import datetime, timedelta
-
-from flask import Blueprint, render_template, redirect, url_for, jsonify, request, flash
+import gpxpy
+import os
+import pytz
+from datetime import datetime, time, timedelta
+from flask import Blueprint, render_template, redirect, url_for, jsonify, request, session, flash, current_app
 from flask_login import login_required, current_user, logout_user, login_user
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
 
 from . import db
-from .model import Event, User, Location
+from .model import Event, User, Location, GPSPosition, APIKey
 
 # Create blueprint
 main_bp = Blueprint('main', __name__)
+
 
 # Home route
 @main_bp.route('/')
 def index():
     return render_template('index.html')
+
 
 # User authentication routes
 @main_bp.route('/login', methods=['GET', 'POST'])
@@ -34,6 +39,9 @@ def login():
 
         login_user(user, remember=remember)
         flash('Logged in successfully!', 'success')
+
+        # Save the user's timezone in the session
+        session['timezone'] = request.form.get('timezone')
 
         next_page = request.args.get('next')
         if next_page:
@@ -87,11 +95,76 @@ def register():
 
     return render_template('register.html')
 
+
 @main_bp.route('/logout')
 @login_required
 def logout():
     logout_user()
     return redirect(url_for('main.index'))
+
+
+@main_bp.route('/settings', methods=['GET', 'POST'])
+@login_required
+def user_settings():
+    if request.method == 'POST':
+        current_password = request.form.get('current_password')
+        new_password = request.form.get('new_password')
+        confirm_password = request.form.get('confirm_password')
+
+        # Validate input
+        if not current_password or not new_password or not confirm_password:
+            flash('All fields are required', 'danger')
+        elif not check_password_hash(current_user.password_hash, current_password):
+            flash('Current password is incorrect', 'danger')
+        elif new_password != confirm_password:
+            flash('New passwords do not match', 'danger')
+        elif len(new_password) < 8:
+            flash('Password must be at least 8 characters long', 'danger')
+        else:
+            # Update password
+            current_user.password_hash = generate_password_hash(new_password)
+            db.session.commit()
+            flash('Password updated successfully', 'success')
+            return redirect(url_for('main.user_settings'))
+
+    return render_template('user_settings.html')
+
+
+@main_bp.route('/settings/api-keys', methods=['GET', 'POST'])
+@login_required
+def api_keys():
+    if request.method == 'POST':
+        action = request.form.get('action')
+
+        if action == 'create':
+            key_name = request.form.get('key_name')
+            if not key_name:
+                flash('Key name is required', 'danger')
+            else:
+                new_key = APIKey(
+                    user_id=current_user.id,
+                    name=key_name,
+                    key=APIKey.generate_key()
+                )
+                db.session.add(new_key)
+                db.session.commit()
+
+                # Show the key only once
+                flash(f'API key created: {new_key.key}', 'success')
+                flash('Save this key now - it won\'t be shown again!', 'warning')
+
+        elif action == 'delete':
+            key_id = request.form.get('key_id')
+            key = APIKey.query.filter_by(id=key_id, user_id=current_user.id).first()
+
+            if key:
+                db.session.delete(key)
+                db.session.commit()
+                flash('API key deleted', 'success')
+
+    api_keys = APIKey.query.filter_by(user_id=current_user.id).all()
+    return render_template('api_keys.html', api_keys=api_keys)
+
 
 # Timeline routes
 @main_bp.route('/timeline')
@@ -100,16 +173,18 @@ def timeline():
     # Get date from query parameter or use today's date
     date_str = request.args.get('date')
 
+    user_tz = get_user_timezone()
+
     try:
         if date_str:
             # Parse the date string from the URL parameter
             current_date = datetime.strptime(date_str, '%Y-%m-%d').date()
         else:
             # Default to today's date
-            current_date = datetime.now().date()
+            current_date = datetime.now(user_tz).date()
     except ValueError:
         # Handle invalid date format
-        current_date = datetime.now().date()
+        current_date = datetime.now(user_tz).date()
 
     # Calculate yesterday and tomorrow for navigation
     yesterday = (current_date - timedelta(days=1)).strftime('%Y-%m-%d')
@@ -119,8 +194,8 @@ def timeline():
     current_date_formatted = current_date.strftime('%A, %B %d, %Y')
 
     # Get events for the selected date
-    start_of_day = datetime.combine(current_date, datetime.min.time())
-    end_of_day = datetime.combine(current_date, datetime.max.time())
+    start_of_day = user_tz.localize(datetime.combine(current_date, datetime.min.time())).astimezone(pytz.UTC)
+    end_of_day = user_tz.localize(datetime.combine(current_date, datetime.max.time())).astimezone(pytz.UTC)
 
     events = Event.query.filter_by(user_id=current_user.id) \
         .filter(Event.start_time >= start_of_day) \
@@ -212,6 +287,7 @@ def add_event():
     return render_template('add_event.html',
                           today_date=today_date,
                           locations=user_locations)
+
 
 @main_bp.route('/edit_event/<int:event_id>', methods=['GET', 'POST'])
 @login_required
@@ -393,7 +469,124 @@ def delete_location(location_id):
 
     return render_template('delete_location_confirm.html', location=location)
 
+
+@main_bp.route('/gps/import', methods=['GET', 'POST'])
+@login_required
+def import_gpx():
+    if request.method == 'POST':
+        # Check if the post request has the file part
+        if 'gpx_file' not in request.files:
+            flash('No file part', 'danger')
+            return redirect(request.url)
+
+        file = request.files['gpx_file']
+        if file.filename == '':
+            flash('No selected file', 'danger')
+            return redirect(request.url)
+
+        if file and file.filename.endswith('.gpx'):
+            filename = secure_filename(file.filename)
+            file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
+
+            # Process the GPX file
+            try:
+                with open(file_path, 'r') as gpx_file:
+                    gpx = gpxpy.parse(gpx_file)
+
+                points_added = 0
+                for track in gpx.tracks:
+                    for segment in track.segments:
+                        for point in segment.points:
+                            # Create GPS position for each point
+                            position = GPSPosition(
+                                user_id=current_user.id,
+                                timestamp=point.time,
+                                latitude=point.latitude,
+                                longitude=point.longitude,
+                                altitude=point.elevation,
+                                speed=point.speed,
+                                source='gpx_import'
+                            )
+                            db.session.add(position)
+                            points_added += 1
+
+                db.session.commit()
+                flash(f'Successfully imported {points_added} GPS points', 'success')
+
+            except Exception as e:
+                flash(f'Error processing GPX file: {str(e)}', 'danger')
+
+            # Remove the file after processing
+            os.remove(file_path)
+
+            return redirect(url_for('main.gps_data'))
+
+    return render_template('import_gpx.html')
+
+
+@main_bp.route('/gps/data')
+@login_required
+def gps_data():
+    # Get date from query parameter or use today's date
+    date_str = request.args.get('date')
+
+    user_tz = get_user_timezone()
+
+    try:
+        if date_str:
+            # Parse the date string from the URL parameter
+            current_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        else:
+            # Default to today's date
+            current_date = datetime.now(user_tz).date()
+    except ValueError:
+        # Handle invalid date format
+        current_date = datetime.now(user_tz).date()
+
+    # Calculate yesterday and tomorrow for navigation
+    yesterday = (current_date - timedelta(days=1)).strftime('%Y-%m-%d')
+    tomorrow = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
+
+    # Format the current date for display
+    current_date_formatted = current_date.strftime('%A, %B %d, %Y')
+
+    # Get GPS data statistics for the selected day
+    start_of_day = user_tz.localize(datetime.combine(current_date, datetime.min.time())).astimezone(pytz.UTC)
+    end_of_day = user_tz.localize(datetime.combine(current_date, datetime.max.time())).astimezone(pytz.UTC)
+
+    gps_count = GPSPosition.query.filter_by(user_id=current_user.id) \
+        .filter(GPSPosition.timestamp >= start_of_day) \
+        .filter(GPSPosition.timestamp <= end_of_day) \
+        .count()
+
+    return render_template('gps_data.html',
+                           gps_count=gps_count,
+                           yesterday=yesterday,
+                           tomorrow=tomorrow,
+                           current_date=current_date.strftime('%Y-%m-%d'),
+                           current_date_formatted=current_date_formatted)
+
+
 # API routes for mobile/AJAX access
+@main_bp.route('/api/set_timezone', methods=['POST'])
+@login_required
+def set_timezone():
+    data = request.get_json()
+    timezone = data.get('timezone')
+
+    if timezone:
+        session['timezone'] = timezone
+        return jsonify({'status': 'success'})
+
+    return jsonify({'status': 'error', 'message': 'No timezone provided'}), 400
+
+
+def get_user_timezone():
+    """Helper function to get timezone from session or default to UTC"""
+    return pytz.timezone(session.get('timezone') or 'UTC')
+
+
 @main_bp.route('/api/events', methods=['GET'])
 @login_required
 def get_events():
@@ -413,8 +606,115 @@ def get_events():
 
     return jsonify(result)
 
+
 @main_bp.route('/api/location', methods=['POST'])
 @login_required
 def log_location():
     # Placeholder for location logging API endpoint
     return jsonify({'status': 'success'})
+
+
+@main_bp.route('/api/gps/positions', methods=['GET'])
+@login_required
+def get_gps_positions():
+    date = request.args.get('date')
+    user_tz = get_user_timezone()
+
+    try:
+        # Parse date and create start/end datetime objects
+        date_obj = datetime.strptime(date, '%Y-%m-%d').date()
+        # Convert start and end times from the user's timezone to UTC
+        start_datetime = user_tz.localize(datetime.combine(date_obj, time.min)).astimezone(pytz.UTC)
+        end_datetime = user_tz.localize(datetime.combine(date_obj, time.max)).astimezone(pytz.UTC)
+    except ValueError:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+
+    # Query positions for the specified day
+    positions = GPSPosition.query.filter(
+        GPSPosition.user_id == current_user.id,
+        GPSPosition.timestamp >= start_datetime,
+        GPSPosition.timestamp <= end_datetime
+    ).order_by(GPSPosition.timestamp).all()
+
+    # Convert to GeoJSON for mapping
+    features = []
+    for pos in positions:
+        features.append({
+            'type': 'Feature',
+            'geometry': {
+                'type': 'Point',
+                'coordinates': [pos.longitude, pos.latitude]
+            },
+            'properties': {
+                'id': pos.id,
+                'timestamp': pos.timestamp.isoformat(),
+                'altitude': pos.altitude,
+                'accuracy': pos.accuracy,
+                'speed': pos.speed,
+                'source': pos.source
+            }
+        })
+
+    geojson = {
+        'type': 'FeatureCollection',
+        'features': features
+    }
+
+    return jsonify(geojson)
+
+
+@main_bp.route('/api/gps/log', methods=['POST'])
+def log_gps_position():
+    # Get API key from header or query parameter
+    api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
+
+    if not api_key:
+        return jsonify({'error': 'API key required'}), 401
+
+    # Validate API key
+    key_record = APIKey.query.filter_by(key=api_key).first()
+    if not key_record:
+        return jsonify({'error': 'Invalid API key'}), 401
+
+    # Update last used timestamp
+    key_record.last_used = datetime.utcnow()
+
+    # GPSLogger typically sends data as URL parameters
+    latitude = request.args.get('lat')
+    longitude = request.args.get('lon')
+    timestamp_str = request.args.get('time')  # ISO format
+    altitude = request.args.get('alt')
+    accuracy = request.args.get('acc')
+    speed = request.args.get('spd')
+    bearing = request.args.get('bearing')
+
+    # Validate required fields
+    if not all([latitude, longitude, timestamp_str]):
+        return jsonify({'error': 'Missing required parameters'}), 400
+
+    try:
+        # Parse timestamp
+        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+
+        # Create GPS position
+        position = GPSPosition(
+            user_id=key_record.user_id,
+            timestamp=timestamp,
+            latitude=float(latitude),
+            longitude=float(longitude),
+            altitude=float(altitude) if altitude else None,
+            accuracy=float(accuracy) if accuracy else None,
+            speed=float(speed) if speed else None,
+            bearing=float(bearing) if bearing else None,
+            provider=request.args.get('provider', 'unknown'),
+            source='gpslogger'
+        )
+
+        db.session.add(position)
+        db.session.commit()
+
+        return jsonify({'status': 'success'}), 200
+
+    except (ValueError, TypeError) as e:
+        current_app.logger.error(f"Error logging GPS position: {str(e)}")
+        return jsonify({'error': str(e)}), 400

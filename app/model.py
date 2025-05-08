@@ -14,6 +14,24 @@ class User(db.Model, UserMixin):
     events = db.relationship('Event', backref='user', lazy=True)
 
 
+class APIKey(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    key = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    name = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_used = db.Column(db.DateTime)
+
+    user = db.relationship('User', backref=db.backref('api_keys', lazy=True))
+
+    @staticmethod
+    def generate_key():
+        return secrets.token_urlsafe(32)
+
+    def __repr__(self):
+        return f'<APIKey {self.name}>'
+
+
 class Event(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -55,3 +73,22 @@ class Location(db.Model):
     place_name = db.Column(db.String(100))
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     user = db.relationship('User', backref='locations')
+
+
+class GPSPosition(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    timestamp = db.Column(db.DateTime, nullable=False, index=True)
+    latitude = db.Column(db.Float, nullable=False)
+    longitude = db.Column(db.Float, nullable=False)
+    altitude = db.Column(db.Float)
+    accuracy = db.Column(db.Float)
+    speed = db.Column(db.Float)
+    bearing = db.Column(db.Float)
+    provider = db.Column(db.String(50))
+    source = db.Column(db.String(50))  # e.g. 'gpslogger' or 'gpx_import'
+
+    user = db.relationship('User', backref=db.backref('gps_positions', lazy=True))
+
+    def __repr__(self):
+        return f'<GPSPosition {self.timestamp}: {self.latitude},{self.longitude}>'

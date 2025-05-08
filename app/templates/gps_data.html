@@ -1,0 +1,168 @@
+{% extends "_base.html" %}
+
+{% block title %}GPS Data - {{ current_date_formatted }}{% endblock %}
+
+{% block head %}
+{{ super() }}
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@3.1.0/dist/maplibre-gl.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@3.1.0/dist/maplibre-gl.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-10 offset-md-1">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h3 class="mb-0">GPS Data</h3>
+                    <div>
+                        <a href="{{ url_for('main.import_gpx') }}" class="btn btn-sm btn-light">
+                            <i class="bi bi-upload"></i> Import GPX
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Date Navigation -->
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <a href="{{ url_for('main.gps_data', date=yesterday) }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-chevron-left"></i> Previous Day
+                        </a>
+                        <h4 class="mb-0">{{ current_date_formatted }}</h4>
+                        <a href="{{ url_for('main.gps_data', date=tomorrow) }}" class="btn btn-outline-secondary">
+                            Next Day <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </div>
+
+                    <!-- GPS Data Statistics -->
+                    <div class="alert {% if gps_count > 0 %}alert-info{% else %}alert-secondary{% endif %} mb-4">
+                        {% if gps_count > 0 %}
+                            <strong>{{ gps_count }}</strong> GPS points recorded on this day.
+                        {% else %}
+                            No GPS data available for this day.
+                        {% endif %}
+                    </div>
+
+                    <!-- Map for GPS Data -->
+                    <div id="gps-map" class="map-container" style="height: 500px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize the map
+        const map = new maplibregl.Map({
+            container: 'gps-map',
+            style: 'https://api.protomaps.com/styles/v5/light/en.json?key={{ config.PROTOMAPS_API_KEY }}',
+            center: [0, 0],
+            zoom: 2
+        });
+
+        // Add navigation controls
+        map.addControl(new maplibregl.NavigationControl());
+
+        // Add scale
+        map.addControl(new maplibregl.ScaleControl({
+            maxWidth: 200,
+            unit: 'metric'
+        }));
+
+        // Wait for the map to load
+        map.on('load', function() {
+            // Fetch GPS data for the current day
+            fetch(`/api/gps/positions?date={{ current_date }}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.features && data.features.length > 0) {
+                        // Add source for GPS points
+                        map.addSource('gps-points', {
+                            'type': 'geojson',
+                            'data': data
+                        });
+
+                        // Add line representing the path
+                        map.addLayer({
+                            'id': 'gps-path',
+                            'type': 'line',
+                            'source': 'gps-points',
+                            'layout': {
+                                'line-join': 'round',
+                                'line-cap': 'round'
+                            },
+                            'paint': {
+                                'line-color': '#4285F4',
+                                'line-width': 3,
+                                'line-opacity': 0.8
+                            }
+                        });
+
+                        // Add points
+                        map.addLayer({
+                            'id': 'gps-points',
+                            'type': 'circle',
+                            'source': 'gps-points',
+                            'paint': {
+                                'circle-radius': 4,
+                                'circle-color': '#4285F4',
+                                'circle-stroke-width': 1,
+                                'circle-stroke-color': '#ffffff'
+                            }
+                        });
+
+                        // Create bounds to fit all points
+                        const bounds = new maplibregl.LngLatBounds();
+                        data.features.forEach(feature => {
+                            bounds.extend(feature.geometry.coordinates);
+                        });
+
+                        // Fit map to bounds
+                        map.fitBounds(bounds, {
+                            padding: 50,
+                            maxZoom: 15
+                        });
+
+                        // Add popup
+                        const popup = new maplibregl.Popup({
+                            closeButton: false,
+                            closeOnClick: false
+                        });
+
+                        map.on('mouseenter', 'gps-points', function(e) {
+                            map.getCanvas().style.cursor = 'pointer';
+
+                            const coordinates = e.features[0].geometry.coordinates.slice();
+                            const timestamp = new Date(e.features[0].properties.timestamp);
+                            const time = timestamp.toLocaleTimeString();
+                            const speed = e.features[0].properties.speed ?
+                                `${(e.features[0].properties.speed * 3.6).toFixed(1)} km/h` : 'N/A';
+
+                            const html = `
+                                <strong>${time}</strong><br>
+                                Speed: ${speed}
+                            `;
+
+                            popup.setLngLat(coordinates).setHTML(html).addTo(map);
+                        });
+
+                        map.on('mouseleave', 'gps-points', function() {
+                            map.getCanvas().style.cursor = '';
+                            popup.remove();
+                        });
+                    } else {
+                        // No GPS data
+                        document.getElementById('gps-map').innerHTML =
+                            '<div class="d-flex justify-content-center align-items-center h-100 text-muted">' +
+                            '<p>No GPS data available for this day</p></div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading GPS data:', error);
+                });
+        });
+    });
+</script>
+{% endblock %}

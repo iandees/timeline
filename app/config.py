@@ -11,7 +11,7 @@ class Config:
     PROTOMAPS_API_KEY = os.environ.get('PROTOMAPS_API_KEY')
     # Other common configuration
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max upload
-
+    UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER') or os.path.join(os.getcwd(), 'uploads')
 
 class DevelopmentConfig(Config):
     """Development configuration."""

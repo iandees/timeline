@@ -8,4 +8,6 @@ dependencies = [
     "flask-login>=0.6.3",
     "flask-migrate>=4.1.0",
     "flask-sqlalchemy>=3.1.1",
+    "gpxpy>=1.6.2",
+    "pytz>=2025.2",
 ]

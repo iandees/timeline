@@ -2,6 +2,22 @@
 
 {% block title %}Login - Timeline App{% endblock %}
 
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add hidden input for timezone to the login form
+        const loginForm = document.querySelector('form');
+        if (loginForm) {
+            const timezoneInput = document.createElement('input');
+            timezoneInput.type = 'hidden';
+            timezoneInput.name = 'timezone';
+            timezoneInput.value = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            loginForm.appendChild(timezoneInput);
+        }
+    });
+</script>
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-6 col-lg-4">
