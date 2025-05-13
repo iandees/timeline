@@ -254,12 +254,14 @@ def add_event():
                 location_id = None
 
         # Combine date and time strings
-        start_datetime = datetime.strptime(f"{date_str} {start_time_str}", '%Y-%m-%d %H:%M')
+        start_datetime_local = datetime.strptime(f"{date_str} {start_time_str}", '%Y-%m-%d %H:%M')
+        start_datetime = get_user_timezone().localize(start_datetime_local).astimezone(pytz.UTC)
 
         # Handle optional end time
         end_datetime = None
         if end_time_str:
-            end_datetime = datetime.strptime(f"{date_str} {end_time_str}", '%Y-%m-%d %H:%M')
+            end_datetime_local = datetime.strptime(f"{date_str} {end_time_str}", '%Y-%m-%d %H:%M')
+            end_datetime = get_user_timezone().localize(end_datetime_local).astimezone(pytz.UTC)
 
         # Create new event
         new_event = Event(
@@ -647,7 +649,7 @@ def get_gps_positions():
             },
             'properties': {
                 'id': pos.id,
-                'timestamp': pos.timestamp.isoformat(),
+                'timestamp': pos.timestamp.isoformat() + 'Z',
                 'altitude': pos.altitude,
                 'accuracy': pos.accuracy,
                 'speed': pos.speed,
