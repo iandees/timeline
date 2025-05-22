@@ -4,6 +4,7 @@ import pytz
 from datetime import datetime, time, timedelta
 from flask import Blueprint, render_template, redirect, url_for, jsonify, request, session, flash, current_app
 from flask_login import login_required, current_user, logout_user, login_user
+from gpxpy.geo import haversine_distance
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -259,10 +260,10 @@ def add_event():
 
             # Sort locations by distance to clicked point
             for location in locations:
-                # Calculate approximate distance (Pythagoras on lat/lon is not accurate
-                # but good enough for sorting in a small area)
-                location.distance = ((location.latitude - lat) ** 2 +
-                                     (location.longitude - lon) ** 2) ** 0.5
+                location.distance = haversine_distance(
+                    lat, lon,
+                    location.latitude, location.longitude,
+                )
 
             # Sort locations by distance from closest to furthest
             sorted_locations = sorted(locations, key=lambda x: x.distance)
@@ -270,7 +271,7 @@ def add_event():
             # Populate the select field with sorted locations
             form.location_id.choices = [
                 ('new', '-- Add New Location --'),
-                *[(str(l.id), l.place_name) for l in sorted_locations]
+                *[(str(l.id), l.place_name + f" ({l.distance:0.1f}m)") for l in sorted_locations]
             ]
 
             # Set the hidden fields for new location
