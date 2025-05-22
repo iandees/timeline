@@ -9,6 +9,7 @@ from werkzeug.utils import secure_filename
 
 from . import db
 from .model import Event, User, Location, GPSPosition, APIKey
+from .forms import EventForm
 
 # Create blueprint
 main_bp = Blueprint('main', __name__)
@@ -213,27 +214,89 @@ def timeline():
 @main_bp.route('/add_event', methods=['GET', 'POST'])
 @login_required
 def add_event():
-    # Format today's date for the form
-    today_date = datetime.now().strftime('%Y-%m-%d')
+    form = EventForm()
 
-    # Get user's locations for the dropdown
-    user_locations = Location.query.filter_by(user_id=current_user.id).all()
+    date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    lat = request.args.get('lat')
+    lon = request.args.get('lon')
 
-    if request.method == 'POST':
-        # Extract form data
-        event_type = request.form.get('event_type')
-        title = request.form.get('title')
-        date_str = request.form.get('date')
-        start_time_str = request.form.get('start_time')
-        end_time_str = request.form.get('end_time')
-        location_id = request.form.get('location_id')
-        notes = request.form.get('notes')
+    user_tz = get_user_timezone()
+
+    try:
+        current_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        current_date = datetime.now(user_tz).date()
+
+    # If location coordinates are provided, try to estimate start time and find nearby locations
+    if lat and lon:
+        try:
+            lat = float(lat)
+            lon = float(lon)
+
+            # Convert to UTC for database query
+            start_of_day = user_tz.localize(datetime.combine(current_date, time.min)).astimezone(pytz.UTC)
+            end_of_day = user_tz.localize(datetime.combine(current_date, time.max)).astimezone(pytz.UTC)
+
+            # Find GPS points near the clicked location (within ~100 meters)
+            nearby_points = GPSPosition.query.filter(
+                GPSPosition.user_id == current_user.id,
+                GPSPosition.timestamp >= start_of_day,
+                GPSPosition.timestamp <= end_of_day,
+                # Approximate distance filter (0.001 degree is roughly 100m)
+                GPSPosition.latitude.between(lat - 0.001, lat + 0.001),
+                GPSPosition.longitude.between(lon - 0.001, lon + 0.001)
+            ).order_by(GPSPosition.timestamp).all()
+
+            # If there are nearby points, use the timestamp from the first one
+            if nearby_points:
+                # Convert UTC time to user's local timezone
+                local_time = nearby_points[0].timestamp.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+                # Set the form default time
+                form.start_time.data = local_time
+
+            # Find locations near the clicked point, sorted by distance
+            locations = Location.query.filter_by(user_id=current_user.id).all()
+
+            # Sort locations by distance to clicked point
+            for location in locations:
+                # Calculate approximate distance (Pythagoras on lat/lon is not accurate
+                # but good enough for sorting in a small area)
+                location.distance = ((location.latitude - lat) ** 2 +
+                                     (location.longitude - lon) ** 2) ** 0.5
+
+            # Sort locations by distance from closest to furthest
+            sorted_locations = sorted(locations, key=lambda x: x.distance)
+
+            # Populate the select field with sorted locations
+            form.location_id.choices = [
+                ('new', '-- Add New Location --'),
+                *[(str(l.id), l.place_name) for l in sorted_locations]
+            ]
+
+            # Set the hidden fields for new location
+            form.new_location_lat.data = lat
+            form.new_location_lon.data = lon
+
+        except (ValueError, TypeError):
+            pass
+
+    if not current_date:
+        current_date = datetime.now().strftime('%Y-%m-%d')
+
+    # Fill in the location selector if not already populated
+    if len(form.location_id.choices) == 1:
+        form.location_id.choices.extend(
+            (str(l.id), l.place_name) for l in Location.query.filter_by(user_id=current_user.id).all()
+        )
+
+    if form.validate_on_submit():
+        location_id = form.location_id.data
 
         # Handle new location creation
         if location_id == 'new':
-            place_name = request.form.get('place_name')
-            latitude = request.form.get('latitude')
-            longitude = request.form.get('longitude')
+            place_name = form.place_name.data
+            latitude = form.new_location_lat.data
+            longitude = form.new_location_lon.data
 
             # Validate new location data
             if place_name and latitude and longitude:
@@ -254,23 +317,23 @@ def add_event():
                 location_id = None
 
         # Combine date and time strings
-        start_datetime_local = datetime.strptime(f"{date_str} {start_time_str}", '%Y-%m-%d %H:%M')
+        start_datetime_local = form.start_time.data
         start_datetime = get_user_timezone().localize(start_datetime_local).astimezone(pytz.UTC)
 
         # Handle optional end time
         end_datetime = None
-        if end_time_str:
-            end_datetime_local = datetime.strptime(f"{date_str} {end_time_str}", '%Y-%m-%d %H:%M')
+        if form.end_time.data:
+            end_datetime_local = form.end_time.data
             end_datetime = get_user_timezone().localize(end_datetime_local).astimezone(pytz.UTC)
 
         # Create new event
         new_event = Event(
             user_id=current_user.id,
-            event_type=event_type,
-            title=title,
+            event_type=form.event_type.data,
+            title=form.title.data,
             start_time=start_datetime,
             end_time=end_datetime,
-            notes=notes
+            notes=form.notes.data,
         )
 
         # Set location if provided
@@ -287,8 +350,8 @@ def add_event():
         return redirect(url_for('main.timeline', date=date_str))
 
     return render_template('add_event.html',
-                          today_date=today_date,
-                          locations=user_locations)
+                           form=form,
+                           date=current_date)
 
 
 @main_bp.route('/edit_event/<int:event_id>', methods=['GET', 'POST'])

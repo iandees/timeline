@@ -11,10 +11,9 @@
         width: 100%;
         height: 300px;
         border-radius: 4px;
-        display: none;
     }
 
-    .map-overlay {
+    .location-map {
         position: absolute;
         bottom: 10px;
         right: 10px;
@@ -35,80 +34,55 @@
                     <h3 class="card-title mb-0">Add New Event</h3>
                 </div>
                 <div class="card-body">
-                    <form method="POST" action="{{ url_for('main.add_event') }}">
+                    <form method="POST" id="event-form" action="{{ url_for('main.add_event') }}">
+                        {{ form.hidden_tag() }}
+
                         <!-- Event Type -->
                         <div class="mb-3">
-                            <label for="event_type" class="form-label">Event Type</label>
-                            <select class="form-select" id="event_type" name="event_type" required>
-                                <option value="" selected disabled>Select a type</option>
-                                <option value="meal">Meal</option>
-                                <option value="travel">Travel</option>
-                                <option value="hygiene">Hygiene</option>
-                                <option value="work">Work</option>
-                                <option value="social">Social</option>
-                                <option value="exercise">Exercise</option>
-                                <option value="other">Other</option>
-                            </select>
+                            {{ form.event_type.label(class="form-label") }}
+                            {{ form.event_type(class="form-select") }}
                         </div>
 
                         <!-- Event Title -->
                         <div class="mb-3">
-                            <label for="title" class="form-label">Title</label>
-                            <input type="text" class="form-control" id="title" name="title" required>
-                        </div>
-
-                        <!-- Event Date -->
-                        <div class="mb-3">
-                            <label for="date" class="form-label">Date</label>
-                            <input type="date" class="form-control" id="date" name="date"
-                                   value="{{ request.args.get('date') or today_date }}" required>
+                            {{ form.title.label(class="form-label") }}
+                            {{ form.title(class="form-control", placeholder="Event Title", required=True) }}
                         </div>
 
                         <!-- Event Times -->
                         <div class="row mb-3">
                             <div class="col">
-                                <label for="start_time" class="form-label">Start Time</label>
-                                <input type="time" class="form-control" id="start_time" name="start_time" required>
+                                {{ form.start_time.label(class="form-label") }}
+                                {{ form.start_time(class="form-control", placeholder="Start Time", required=True) }}
                             </div>
                             <div class="col">
-                                <label for="end_time" class="form-label">End Time <span class="text-muted">(Optional)</span></label>
-                                <input type="time" class="form-control" id="end_time" name="end_time">
+                                {{ form.end_time.label(class="form-label") }}
+                                {{ form.end_time(class="form-control", placeholder="End Time (Optional)") }}
                             </div>
                         </div>
 
                         <!-- Location -->
-                        <div class="mb-3">
-                            <label for="location_id" class="form-label">Location <span class="text-muted">(Optional)</span></label>
-                            <div class="input-group mb-3">
-                                <select class="form-select" id="location_id" name="location_id">
-                                    <option value="">-- No Location --</option>
-                                    {% for location in locations %}
-                                    <option value="{{ location.id }}">{{ location.place_name }}</option>
-                                    {% endfor %}
-                                    <option value="new">+ Add New Location</option>
-                                </select>
-                                <a href="{{ url_for('main.locations') }}" class="btn btn-outline-secondary">
-                                    <i class="bi bi-gear"></i> Manage
-                                </a>
-                            </div>
+                        <div class="mb-3" id="location-select">
+                            {{ form.location_id.label(class="form-label") }}
+                            {{ form.location_id(class="form-select") }}
                         </div>
 
                         <!-- New Location Form (initially hidden) -->
-                        <div id="new-location-form" style="display: none;">
+                        <div id="new-location-form">
                             <div class="card mb-3 border-primary">
                                 <div class="card-header bg-light">
                                     <h5 class="mb-0">Add New Location</h5>
                                 </div>
                                 <div class="card-body">
                                     <div class="mb-3">
-                                        <label for="place_name" class="form-label">Location Name</label>
-                                        <input type="text" class="form-control" id="place_name" name="place_name">
+                                        {{ form.place_name.label(class="form-label") }}
+                                        {{ form.place_name(class="form-control", placeholder="Location Name") }}
                                     </div>
 
                                     <!-- Map for selecting location -->
                                     <div class="position-relative">
                                         <div id="location-map"></div>
-                                        <div class="map-overlay">
+                                        <div class="location-map">
                                             <button type="button" id="current-location" class="btn btn-sm btn-info">
                                                 <i class="bi bi-geo-alt"></i> Use My Location
                                             </button>
@@ -121,23 +95,23 @@
                                     <!-- Hidden inputs for coordinates -->
                                     <div class="row">
                                         <div class="col">
-                                            <input type="hidden" class="form-control" id="latitude" name="latitude" readonly>
-                                            <input type="hidden" class="form-control" id="longitude" name="longitude" readonly>
+                                            <!-- Hidden fields for new location -->
+                                            {{ form.new_location_lat(type="hidden") }}
+                                            {{ form.new_location_lon(type="hidden") }}                                        </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
                         <!-- Notes -->
                         <div class="mb-3">
-                            <label for="notes" class="form-label">Notes <span class="text-muted">(Optional)</span></label>
-                            <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                            {{ form.notes.label(class="form-label") }}
+                            {{ form.notes(class="form-control", placeholder="Notes (Optional)", rows=3) }}
                         </div>
 
                         <!-- Submit and Cancel buttons -->
-                        <div class="d-flex justify-content-end">
-                            <a href="{{ url_for('main.timeline') }}" class="btn btn-outline-secondary me-2">Cancel</a>
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('main.timeline', date=date.strftime('%Y-%m-%d')) }}" class="btn btn-outline-secondary">Cancel</a>
                             <button type="submit" class="btn btn-primary">Save Event</button>
                         </div>
                     </form>
@@ -152,14 +126,12 @@
         const locationSelect = document.getElementById('location_id');
         const newLocationForm = document.getElementById('new-location-form');
         const locationMap = document.getElementById('location-map');
-        let map, marker;
 
         // Handle location selection change
         locationSelect.addEventListener('change', function() {
             if (this.value === 'new') {
                 newLocationForm.style.display = 'block';
                 locationMap.style.display = 'block';
-                initializeMap();
             } else {
                 newLocationForm.style.display = 'none';
                 locationMap.style.display = 'none';
@@ -167,62 +139,50 @@
         });
 
         // Initialize the map
-        function initializeMap() {
-            if (!map) {
-                map = new maplibregl.Map({
-                    container: locationMap,
-                    style: "https://api.protomaps.com/styles/v5/light/en.json?key={{ config.get('PROTOMAPS_API_KEY') }}",
-                    center: [0, 0],
-                    zoom: 2
-                });
+        const map = new maplibregl.Map({
+            container: locationMap,
+            style: "https://api.protomaps.com/styles/v5/light/en.json?key={{ config.get('PROTOMAPS_API_KEY') }}",
+            center: [0, 0],
+            zoom: 2
+        });
 
-                // Add navigation controls
-                map.addControl(new maplibregl.NavigationControl());
+        map.addControl(new maplibregl.NavigationControl());
+        let marker = new maplibregl.Marker({
+            draggable: true
+        }).setLngLat([{{ request.args.get("lon") or 0 }}, {{ request.args.get("lat") or 0 }}]).addTo(map);
 
-                // Create a draggable marker
-                marker = new maplibregl.Marker({
-                    draggable: true
-                }).setLngLat([0, 0]).addTo(map);
-
-                // Update coordinates when marker is dragged
-                function updateCoordinates() {
-                    const lngLat = marker.getLngLat();
-                    document.getElementById('latitude').value = lngLat.lat.toFixed(6);
-                    document.getElementById('longitude').value = lngLat.lng.toFixed(6);
-                }
-
-                marker.on('dragend', updateCoordinates);
-
-                // Set marker when clicking on the map
-                map.on('click', function(e) {
-                    marker.setLngLat(e.lngLat);
-                    updateCoordinates();
-                });
-
-                // Use current location button
-                document.getElementById('current-location').addEventListener('click', function() {
-                    if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition(function(position) {
-                            const lat = position.coords.latitude;
-                            const lng = position.coords.longitude;
-
-                            marker.setLngLat([lng, lat]);
-                            map.flyTo({
-                                center: [lng, lat],
-                                zoom: 14
-                            });
-
-                            document.getElementById('latitude').value = lat.toFixed(6);
-                            document.getElementById('longitude').value = lng.toFixed(6);
-                        }, function() {
-                            alert('Unable to get your location');
-                        });
-                    } else {
-                        alert('Geolocation is not supported by your browser');
-                    }
-                });
-            }
+        function updateCoordinates() {
+            const lngLat = marker.getLngLat();
+            document.getElementById('latitude').value = lngLat.lat.toFixed(6);
+            document.getElementById('longitude').value = lngLat.lng.toFixed(6);
         }
+
+        marker.on('dragend', updateCoordinates);
+        map.on('click', function (e) {
+            marker.setLngLat(e.lngLat);
+            updateCoordinates();
+        });
+        document.getElementById('current-location').addEventListener('click', function () {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+
+                    marker.setLngLat([lng, lat]);
+                    map.flyTo({
+                        center: [lng, lat],
+                        zoom: 14
+                    });
+
+                    document.getElementById('latitude').value = lat.toFixed(6);
+                    document.getElementById('longitude').value = lng.toFixed(6);
+                }, function () {
+                    alert('Unable to get your location');
+                });
+            } else {
+                alert('Geolocation is not supported by your browser');
+            }
+        });
     });
 </script>
 {% endblock %}

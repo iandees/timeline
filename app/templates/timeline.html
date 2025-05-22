@@ -203,89 +203,114 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     });
 
-    // Fetch GPS points for the current day
-    const currentDate = document.querySelector('input[name="date"]').value;
+    // Wait for the map to fully load before fetching and adding GPS points
+    map.on('load', function() {
+        const currentDate = document.querySelector('input[name="date"]').value;
 
-    fetch(`/api/gps/positions?date=${currentDate}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.features.length > 0) {
-                // Add source for GPS points
-                map.addSource('gps-points', {
-                    'type': 'geojson',
-                    'data': data
-                });
+        fetch(`/api/gps/positions?date=${currentDate}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.features && data.features.length > 0) {
+                    // Add source for GPS points
+                    map.addSource('gps-points', {
+                        'type': 'geojson',
+                        'data': data
+                    });
 
-                // Add line representing the path
-                map.addLayer({
-                    'id': 'gps-path',
-                    'type': 'line',
-                    'source': 'gps-points',
-                    'layout': {
-                        'line-join': 'round',
-                        'line-cap': 'round'
-                    },
-                    'paint': {
-                        'line-color': '#4285F4',
-                        'line-width': 3,
-                        'line-opacity': 0.8
-                    }
-                });
+                    // Add line representing the path
+                    map.addLayer({
+                        'id': 'gps-path',
+                        'type': 'line',
+                        'source': 'gps-points',
+                        'layout': {
+                            'line-join': 'round',
+                            'line-cap': 'round'
+                        },
+                        'paint': {
+                            'line-color': '#4285F4',
+                            'line-width': 3,
+                            'line-opacity': 0.8
+                        }
+                    });
 
-                // Add points
-                map.addLayer({
-                    'id': 'gps-points',
-                    'type': 'circle',
-                    'source': 'gps-points',
-                    'paint': {
-                        'circle-radius': 4,
-                        'circle-color': '#4285F4',
-                        'circle-stroke-width': 1,
-                        'circle-stroke-color': '#ffffff'
-                    }
-                });
+                    // Add points
+                    map.addLayer({
+                        'id': 'gps-points',
+                        'type': 'circle',
+                        'source': 'gps-points',
+                        'paint': {
+                            'circle-radius': 4,
+                            'circle-color': '#4285F4',
+                            'circle-stroke-width': 1,
+                            'circle-stroke-color': '#ffffff'
+                        }
+                    });
 
-                // Add popup for GPS points
-                const popup = new maplibregl.Popup({
-                    closeButton: false,
-                    closeOnClick: false
-                });
+                    // Add popup for GPS points
+                    const popup = new maplibregl.Popup({
+                        closeButton: false,
+                        closeOnClick: false
+                    });
 
-                map.on('mouseenter', 'gps-points', function(e) {
-                    map.getCanvas().style.cursor = 'pointer';
+                    map.on('mouseenter', 'gps-points', function (e) {
+                        map.getCanvas().style.cursor = 'pointer';
 
-                    const coordinates = e.features[0].geometry.coordinates.slice();
-                    const timestamp = new Date(e.features[0].properties.timestamp);
-                    const time = timestamp.toLocaleTimeString();
-                    const speed = e.features[0].properties.speed ?
-                        `${(e.features[0].properties.speed * 3.6).toFixed(1)} km/h` : 'N/A';
+                        const coordinates = e.features[0].geometry.coordinates.slice();
+                        const timestamp = new Date(e.features[0].properties.timestamp);
+                        const time = timestamp.toLocaleTimeString();
+                        const speed = e.features[0].properties.speed ?
+                            `${(e.features[0].properties.speed * 3.6).toFixed(1)} km/h` : 'N/A';
 
-                    const html = `
-                        <strong>${time}</strong><br>
-                        Speed: ${speed}
-                    `;
+                        const html = `
+                            <strong>${time}</strong><br>
+                            Speed: ${speed}
+                        `;
 
-                    popup.setLngLat(coordinates).setHTML(html).addTo(map);
-                });
+                        popup.setLngLat(coordinates).setHTML(html).addTo(map);
+                    });
 
-                map.on('mouseleave', 'gps-points', function() {
-                    map.getCanvas().style.cursor = '';
-                    popup.remove();
-                });
+                    map.on('mouseleave', 'gps-points', function () {
+                        map.getCanvas().style.cursor = '';
+                        popup.remove();
+                    });
 
-                // Extend bounds to include GPS points
-                data.features.forEach(function(feature) {
-                    bounds.extend(feature.geometry.coordinates);
-                });
+                    // Extend bounds to include GPS points
+                    data.features.forEach(function (feature) {
+                        bounds.extend(feature.geometry.coordinates);
+                    });
 
-                // Update map view to include all points
-                map.fitBounds(bounds, {
-                    padding: 50,
-                    maxZoom: 15
-                });
-            }
-        })
-        .catch(error => console.error('Error fetching GPS data:', error));
+                    // Update map view to include all points
+                    map.fitBounds(bounds, {
+                        padding: 50,
+                        maxZoom: 15
+                    });
+                }
+            })
+            .catch(error => console.error('Error fetching GPS data:', error));
+    });
+
+    map.on('click', function(e) {
+        // Get clicked coordinates
+        const lngLat = e.lngLat;
+
+        // Create popup content with options
+        const popupContent = `
+            <div class="map-click-popup">
+                <h5>Options</h5>
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('main.add_event') }}?date={{ current_date }}&lat=${lngLat.lat.toFixed(6)}&lon=${lngLat.lng.toFixed(6)}" class="btn btn-sm btn-primary">
+                       <i class="bi bi-plus-circle"></i> Add an event here
+                    </a>
+                </div>
+            </div>
+        `;
+
+        // Create and show the popup
+        new maplibregl.Popup()
+            .setLngLat(lngLat)
+            .setHTML(popupContent)
+            .addTo(map);
+    });
 
     // Helper function to get marker color based on event type
     function getEventTypeColor(eventType) {
