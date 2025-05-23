@@ -472,12 +472,17 @@ def add_location():
         place_name = request.form.get('place_name')
         latitude = float(request.form.get('latitude'))
         longitude = float(request.form.get('longitude'))
+        category = request.form.get('category', '')
+        address = request.form.get('address', '')
 
         new_location = Location(
             user_id=current_user.id,
             place_name=place_name,
             latitude=latitude,
-            longitude=longitude
+            longitude=longitude,
+            category=category,
+            address=address,
+            source='user',
         )
 
         db.session.add(new_location)
@@ -809,6 +814,10 @@ def checkin():
             # Get user's locations
             user_locations = Location.query.filter_by(user_id=current_user.id).all()
 
+            foursquare_venues_to_ignore = set([
+                loc.source_id for loc in user_locations if loc.source == 'foursquare'
+            ])
+
             # Process user locations
             for location in user_locations:
                 # Calculate distance
@@ -832,6 +841,10 @@ def checkin():
 
             # Process Foursquare venues
             for venue in foursquare_venues:
+                # Skip venues already in user's locations
+                if venue['id'] in foursquare_venues_to_ignore:
+                    continue
+
                 # Calculate distance
                 distance = haversine_distance(lat, lon, venue['lat'], venue['lon'])
                 distance_km = distance / 1000
@@ -904,6 +917,9 @@ def checkin():
                 place_name=place_name,
                 latitude=fs_lat,
                 longitude=fs_lon,
+                category=fs_category,
+                source='foursquare',
+                source_id=fs_id,
             )
             db.session.add(new_location)
             db.session.flush()  # Get ID without committing

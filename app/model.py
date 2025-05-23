@@ -64,15 +64,19 @@ class EventAttribute(db.Model):
 
 class Location(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    place_name = db.Column(db.String(100), nullable=False)
     latitude = db.Column(db.Float, nullable=False)
     longitude = db.Column(db.Float, nullable=False)
-    altitude = db.Column(db.Float)
-    accuracy = db.Column(db.Float)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    category = db.Column(db.String(100))
     address = db.Column(db.String(255))
-    place_name = db.Column(db.String(100))
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    source = db.Column(db.String(50))  # 'user', 'foursquare', etc.
+    source_id = db.Column(db.String(100))  # ID from external source
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationships
     user = db.relationship('User', backref='locations')
+    events = db.relationship('Event', lazy=True)
 
 
 class GPSPosition(db.Model):
