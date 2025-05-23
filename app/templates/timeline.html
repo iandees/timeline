@@ -180,7 +180,8 @@ document.addEventListener("DOMContentLoaded", function() {
     if (hasLocations) {
         map.fitBounds(bounds, {
             padding: 50,
-            maxZoom: 15
+            maxZoom: 15,
+            duration: 0,
         });
     }
 
@@ -282,7 +283,8 @@ document.addEventListener("DOMContentLoaded", function() {
                     // Update map view to include all points
                     map.fitBounds(bounds, {
                         padding: 50,
-                        maxZoom: 15
+                        maxZoom: 15,
+                        duration: 0,
                     });
                 }
             })
