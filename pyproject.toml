@@ -11,4 +11,5 @@ dependencies = [
     "flask-wtf>=1.2.2",
     "gpxpy>=1.6.2",
     "pytz>=2025.2",
+    "requests>=2.32.3",
 ]

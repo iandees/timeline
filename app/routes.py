@@ -1,6 +1,7 @@
 import gpxpy
 import os
 import pytz
+import requests
 from datetime import datetime, time, timedelta
 from flask import Blueprint, render_template, redirect, url_for, jsonify, request, session, flash, current_app
 from flask_login import login_required, current_user, logout_user, login_user
@@ -10,7 +11,7 @@ from werkzeug.utils import secure_filename
 
 from . import db
 from .model import Event, User, Location, GPSPosition, APIKey
-from .forms import EventForm
+from .forms import CheckInForm, EventForm
 
 # Create blueprint
 main_bp = Blueprint('main', __name__)
@@ -784,3 +785,204 @@ def log_gps_position():
     except (ValueError, TypeError) as e:
         current_app.logger.error(f"Error logging GPS position: {str(e)}")
         return jsonify({'error': str(e)}), 400
+
+
+@main_bp.route('/checkin', methods=['GET', 'POST'])
+@login_required
+def checkin():
+    form = CheckInForm()
+
+    # Get user's current position (from query params or geolocation JS)
+    lat = request.args.get('lat')
+    lon = request.args.get('lon')
+
+    # Initialize empty lists for results
+    combined_locations = []
+    max_distance_km = 1
+
+    if lat and lon:
+        # Convert to float
+        try:
+            lat = float(lat)
+            lon = float(lon)
+
+            # Get user's locations
+            user_locations = Location.query.filter_by(user_id=current_user.id).all()
+
+            # Process user locations
+            for location in user_locations:
+                # Calculate distance
+                distance = haversine_distance(lat, lon, location.latitude, location.longitude)
+                distance_km = distance / 1000
+
+                # Skip locations beyond 10km
+                if distance_km > max_distance_km:
+                    continue
+
+                # Add distance to location object
+                location.distance = distance
+                location.distance_km = distance_km
+                location.distance_m = distance
+                location.source = 'user'
+
+                combined_locations.append(location)
+
+            # Get Foursquare locations
+            foursquare_venues = get_foursquare_venues(lat, lon, radius=max_distance_km * 1000, limit=50)
+
+            # Process Foursquare venues
+            for venue in foursquare_venues:
+                # Calculate distance
+                distance = haversine_distance(lat, lon, venue['lat'], venue['lon'])
+                distance_km = distance / 1000
+
+                # Skip locations beyond 10km (should be filtered by API, but double-check)
+                if distance_km > max_distance_km:
+                    continue
+
+                # Create a location-like object
+                venue_obj = type('FoursquareVenue', (), {
+                    'id': venue['id'],
+                    'place_name': venue['name'],
+                    'category': venue['category'],
+                    'latitude': venue['lat'],
+                    'longitude': venue['lon'],
+                    'address': venue['address'],
+                    'distance': distance,
+                    'distance_km': distance_km,
+                    'distance_m': distance,
+                    'source': 'foursquare'
+                })
+
+                combined_locations.append(venue_obj)
+
+            # Sort all locations by distance
+            combined_locations.sort(key=lambda x: x.distance)
+
+        except ValueError:
+            flash('Invalid coordinates provided', 'danger')
+
+    # Handle form submission for check-in
+    if form.validate_on_submit():
+        # Get current time in user's timezone
+        user_tz = get_user_timezone()
+        current_time = datetime.now(user_tz)
+
+        if form.location_type.data == 'user':
+            # Check in to existing user location
+            location = Location.query.get(form.location_id.data)
+            if not location or location.user_id != current_user.id:
+                flash('Invalid location', 'danger')
+                return redirect(url_for('main.checkin'))
+
+            # Create event with this location
+            event = Event(
+                user_id=current_user.id,
+                title=form.title.data or f"Checked in at {location.place_name}",  # Use custom title if provided
+                event_type=form.event_type.data,
+                start_time=current_time,
+                location_id=location.id,
+                notes=form.notes.data,
+            )
+            db.session.add(event)
+            db.session.commit()
+
+            flash(f'Checked in at {location.place_name}!', 'success')
+            return redirect(url_for('main.timeline'))
+
+        elif form.location_type.data == 'foursquare':
+            # Create new location from Foursquare data
+            place_name = form.place_name.data
+            fs_lat = float(form.fs_lat.data)
+            fs_lon = float(form.fs_lon.data)
+            fs_category = form.fs_category.data
+            fs_id = form.fs_id.data
+
+            # Create new location
+            new_location = Location(
+                user_id=current_user.id,
+                place_name=place_name,
+                latitude=fs_lat,
+                longitude=fs_lon,
+            )
+            db.session.add(new_location)
+            db.session.flush()  # Get ID without committing
+
+            # Create event with this location
+            event = Event(
+                user_id=current_user.id,
+                title=form.title.data or f"Checked in at {place_name}",  # Use custom title if provided
+                event_type=form.event_type.data,
+                start_time=current_time,
+                location_id=new_location.id,
+                notes=form.notes.data,
+            )
+            db.session.add(event)
+            db.session.commit()
+
+            flash(f'Checked in at {place_name}!', 'success')
+            return redirect(url_for('main.timeline'))
+
+    return render_template('checkin.html',
+                           form=form,
+                           locations=combined_locations,
+                           lat=lat,
+                           lon=lon)
+
+
+def get_foursquare_venues(lat, lon, radius=1000, limit=10):
+    """Fetch nearby venues from Foursquare API"""
+    api_key = current_app.config.get('FOURSQUARE_API_KEY')
+    if not api_key:
+        return []
+
+    # API endpoint
+    url = "https://api.foursquare.com/v3/places/search"
+
+    # Parameters
+    params = {
+        'll': f"{lat},{lon}",
+        'radius': int(radius),
+        'limit': limit,
+        'sort': 'distance',
+    }
+
+    # Headers
+    headers = {
+        "Accept": "application/json",
+        "Authorization": api_key
+    }
+
+    try:
+        response = requests.get(url, params=params, headers=headers)
+        print(response.request.url)
+        print(response.status_code)
+        if response.status_code != 200:
+            return []
+
+
+        data = response.json()
+        results = []
+
+        # Format results to match our needs
+        for venue in data.get('results', []):
+            if 'geocodes' not in venue or 'main' not in venue['geocodes']:
+                continue
+
+            # Get category
+            category = venue.get('categories', [{}])[0].get('name', 'Uncategorized') if venue.get(
+                'categories') else 'Uncategorized'
+
+            results.append({
+                'id': venue.get('fsq_id'),
+                'name': venue.get('name'),
+                'category': category,
+                'lat': venue['geocodes']['main']['latitude'],
+                'lon': venue['geocodes']['main']['longitude'],
+                'address': venue.get('location', {}).get('formatted_address', '')
+            })
+
+        return results
+    except Exception as e:
+        current_app.logger.error(f"Foursquare API error: {str(e)}")
+        return []

@@ -57,3 +57,55 @@ class EventForm(FlaskForm):
                 return False
 
         return True
+
+
+class CheckInForm(FlaskForm):
+    """Form for location check-ins"""
+
+    # Hidden fields for existing location
+    location_id = HiddenField()
+    location_type = HiddenField(validators=[DataRequired()])
+
+    # Fields for Foursquare venue data
+    fs_id = HiddenField()
+    place_name = HiddenField()
+    fs_lat = HiddenField()
+    fs_lon = HiddenField()
+    fs_category = HiddenField()
+
+    title = StringField('Title', description="Optional custom title")
+    notes = TextAreaField('Notes', description="Optional notes about the check-in")
+
+    # What type of event this check-in represents
+    event_type = SelectField(
+        'What are you doing here?',
+        validators=[DataRequired()],
+        choices=[
+            ('social', 'Social'),
+            ('meal', 'Meal'),
+            ('work', 'Work'),
+            ('travel', 'Travel'),
+            ('exercise', 'Exercise'),
+            ('other', 'Other')
+        ],
+        default='social'
+    )
+
+    def validate_on_submit(self):
+        if not super().validate_on_submit():
+            return False
+
+        # Validate based on location type
+        if self.location_type.data == 'user' and not self.location_id.data:
+            self.location_id.errors = ['Missing location ID']
+            return False
+
+        if self.location_type.data == 'foursquare':
+            if not self.fs_id.data or not self.place_name.data:
+                self.place_name.errors = ['Missing venue information']
+                return False
+            if not self.fs_lat.data or not self.fs_lon.data:
+                self.fs_lat.errors = ['Missing venue coordinates']
+                return False
+
+        return True
