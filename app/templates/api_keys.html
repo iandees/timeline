@@ -77,9 +77,9 @@
                         <li>Set the following configuration:
                             <ul>
                                 <li>URL: <code>{{ url_for('main.log_gps_position', _external=True) }}?api_key=YOUR_API_KEY</code></li>
-                                <li>HTTP Method: GET or POST</li>
-                                <li>Body: (leave empty)</li>
-                                <li>Headers: (optional) <code>X-API-Key: YOUR_API_KEY</code></li>
+                                <li>HTTP Method: <code>POST</code></li>
+                                <li>Body: <code>%ALL</code></li>
+                                <li>Headers: <code>Content-Type: application/x-www-form-urlencoded</code></li>
                             </ul>
                         </li>
                         <li>Replace <code>YOUR_API_KEY</code> with the API key you created</li>

@@ -849,16 +849,18 @@ def log_gps_position():
     key_record.last_used = datetime.now(pytz.UTC)
 
     # GPSLogger typically sends data as URL parameters
-    latitude = request.args.get("lat")
-    longitude = request.args.get("lon")
-    timestamp_str = request.args.get("time")  # ISO format
-    altitude = request.args.get("alt")
-    accuracy = request.args.get("acc")
-    speed = request.args.get("spd")
-    bearing = request.args.get("bearing")
+    latitude = request.form.get("lat", type=float)
+    longitude = request.form.get("lon", type=float)
+    timestamp_str = request.form.get("time", type=str)  # ISO format
+    altitude = request.form.get("alt", type=float)
+    accuracy = request.form.get("acc", type=float)
+    speed = request.form.get("spd", type=float)
+    bearing = request.form.get("dir", type=float)
+    provider = request.form.get("prov", type=str)
 
     # Validate required fields
     if not all([latitude, longitude, timestamp_str]):
+        current_app.logger.error("Missing required parameters for GPS logging. latitude: %s, longitude: %s, timestamp: %s", latitude, longitude, timestamp_str)
         return jsonify({"error": "Missing required parameters"}), 400
 
     try:
@@ -869,13 +871,13 @@ def log_gps_position():
         position = GPSPosition(
             user_id=key_record.user_id,
             timestamp=timestamp,
-            latitude=float(latitude),
-            longitude=float(longitude),
-            altitude=float(altitude) if altitude else None,
-            accuracy=float(accuracy) if accuracy else None,
-            speed=float(speed) if speed else None,
-            bearing=float(bearing) if bearing else None,
-            provider=request.args.get("provider", "unknown"),
+            latitude=latitude,
+            longitude=longitude,
+            altitude=altitude if altitude else None,
+            accuracy=accuracy if accuracy else None,
+            speed=speed if speed else None,
+            bearing=bearing if bearing else None,
+            provider=provider,
             source="gpslogger",
         )
 
