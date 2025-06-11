@@ -354,6 +354,9 @@ def add_event():
         db.session.add(new_event)
         db.session.commit()
 
+        # Go back to the timeline for the event's date
+        date_str = start_datetime_local.strftime('%Y-%m-%d')
+
         flash('Event added successfully!', 'success')
 
         # Redirect to the timeline for the event's date
