@@ -1,7 +1,7 @@
 """Initial user model migration
 
 Revision ID: a3fb8091f808
-Revises: 
+Revises:
 Create Date: 2024-12-18 20:45:29.330368
 
 """
