@@ -81,7 +81,7 @@ class Location(db.Model):
 
     # Relationships
     user = db.relationship("User", backref="locations")
-    events = db.relationship("Event", lazy=True)
+    events = db.relationship("Event", lazy=True, viewonly=True)
 
 
 class GPSPosition(db.Model):
