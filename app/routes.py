@@ -197,16 +197,24 @@ def timeline():
     current_date_formatted = current_date.strftime('%A, %B %d, %Y')
 
     # Get events for the selected date
-    start_of_day = user_tz.localize(datetime.combine(current_date, datetime.min.time())).astimezone(pytz.UTC)
-    end_of_day = user_tz.localize(datetime.combine(current_date, datetime.max.time())).astimezone(pytz.UTC)
+    start_of_day_utc = user_tz.localize(datetime.combine(current_date, datetime.min.time())).astimezone(pytz.UTC)
+    end_of_day_utc = user_tz.localize(datetime.combine(current_date, datetime.max.time())).astimezone(pytz.UTC)
 
-    events = Event.query.filter_by(user_id=current_user.id) \
-        .filter(Event.start_time >= start_of_day) \
-        .filter(Event.start_time <= end_of_day) \
+    events_utc = Event.query.filter_by(user_id=current_user.id) \
+        .filter(Event.start_time >= start_of_day_utc) \
+        .filter(Event.start_time <= end_of_day_utc) \
         .order_by(Event.start_time).all()
 
+    # Convert event times to user's local timezone
+    events_local = []
+    for event in events_utc:
+        event.start_time = event.start_time.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+        if event.end_time:
+            event.end_time = event.end_time.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+        events_local.append(event)
+
     return render_template('timeline.html',
-                           events=events,
+                           events=events_local,
                            yesterday=yesterday,
                            tomorrow=tomorrow,
                            current_date=current_date.strftime('%Y-%m-%d'),
@@ -767,7 +775,7 @@ def log_gps_position():
         return jsonify({'error': 'Invalid API key'}), 401
 
     # Update last used timestamp
-    key_record.last_used = datetime.utcnow()
+    key_record.last_used = datetime.now(pytz.UTC)
 
     # GPSLogger typically sends data as URL parameters
     latitude = request.args.get('lat')
