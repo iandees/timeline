@@ -1,6 +1,13 @@
 from flask_wtf import FlaskForm
-from wtforms import (DateField, FloatField, HiddenField, SelectField,
-                     StringField, TextAreaField, TimeField)
+from wtforms import (
+    DateField,
+    FloatField,
+    HiddenField,
+    SelectField,
+    StringField,
+    TextAreaField,
+    TimeField,
+)
 from wtforms.fields import DateTimeLocalField
 from wtforms.validators import DataRequired, Optional
 

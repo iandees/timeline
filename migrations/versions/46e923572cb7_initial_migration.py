@@ -1,10 +1,11 @@
 """Initial migration.
 
 Revision ID: 46e923572cb7
-Revises: 
+Revises:
 Create Date: 2025-05-05 22:30:09.690730
 
 """
+
 import sqlalchemy as sa
 from alembic import op
 
