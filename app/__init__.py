@@ -1,9 +1,11 @@
 import os
-from app.config import config
+
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
 from flask_login import LoginManager
+from flask_migrate import Migrate
+from flask_sqlalchemy import SQLAlchemy
+
+from app.config import config
 
 # Initialize extensions
 db = SQLAlchemy()
@@ -11,7 +13,7 @@ migrate = Migrate()
 login_manager = LoginManager()
 
 
-def create_app(config_name='default'):
+def create_app(config_name="default"):
     app = Flask(__name__)
 
     # Default configuration
@@ -37,6 +39,7 @@ def create_app(config_name='default'):
 
     # Register blueprints
     from .routes import main_bp
+
     app.register_blueprint(main_bp)
 
     return app
