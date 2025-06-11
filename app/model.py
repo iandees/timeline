@@ -1,9 +1,10 @@
 from datetime import datetime
+import secrets
+import json
 
 from flask_login import UserMixin
 
 from . import db
-import json
 
 
 class User(db.Model, UserMixin):
