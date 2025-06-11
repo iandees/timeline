@@ -551,48 +551,66 @@ def import_gpx():
             flash('No file part', 'danger')
             return redirect(request.url)
 
-        file = request.files['gpx_file']
-        if file.filename == '':
-            flash('No selected file', 'danger')
-            return redirect(request.url)
+        files = request.files.getlist('gpx_file')  # Get a list of files
+        total_points_added = 0
+        files_processed = 0
+        errors = []
 
-        if file and file.filename.endswith('.gpx'):
-            filename = secure_filename(file.filename)
-            file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
-            file.save(file_path)
+        for file in files:
+            if file.filename == '':
+                flash('No selected file', 'danger')
+                continue  # Skip to the next file
 
-            # Process the GPX file
-            try:
-                with open(file_path, 'r') as gpx_file:
-                    gpx = gpxpy.parse(gpx_file)
+            if file and file.filename.endswith('.gpx'):
+                filename = secure_filename(file.filename)
+                file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
 
-                points_added = 0
-                for track in gpx.tracks:
-                    for segment in track.segments:
-                        for point in segment.points:
-                            # Create GPS position for each point
-                            position = GPSPosition(
-                                user_id=current_user.id,
-                                timestamp=point.time,
-                                latitude=point.latitude,
-                                longitude=point.longitude,
-                                altitude=point.elevation,
-                                speed=point.speed,
-                                source='gpx_import'
-                            )
-                            db.session.add(position)
-                            points_added += 1
+                try:
+                    file.save(file_path)
 
-                db.session.commit()
-                flash(f'Successfully imported {points_added} GPS points', 'success')
+                    # Process the GPX file
+                    with open(file_path, 'r') as gpx_file_content:
+                        gpx = gpxpy.parse(gpx_file_content)
 
-            except Exception as e:
-                flash(f'Error processing GPX file: {str(e)}', 'danger')
+                    points_added_this_file = 0
+                    for track in gpx.tracks:
+                        for segment in track.segments:
+                            for point in segment.points:
+                                # Create GPS position for each point
+                                position = GPSPosition(
+                                    user_id=current_user.id,
+                                    timestamp=point.time,
+                                    latitude=point.latitude,
+                                    longitude=point.longitude,
+                                    altitude=point.elevation,
+                                    speed=point.speed,
+                                    source='gpx_import'
+                                )
+                                db.session.add(position)
+                                points_added_this_file += 1
 
-            # Remove the file after processing
-            os.remove(file_path)
+                    db.session.commit()
+                    total_points_added += points_added_this_file
+                    files_processed += 1
 
-            return redirect(url_for('main.gps_data'))
+                except Exception as e:
+                    db.session.rollback()  # Rollback changes for the current file if an error occurs
+                    errors.append(f"Error processing file {filename}: {str(e)}")
+
+                finally:
+                    # Remove the file after processing
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+            else:
+                errors.append(f"Invalid file type: {file.filename}. Only .gpx files are allowed.")
+
+        if files_processed > 0:
+            flash(f'Successfully imported {total_points_added} GPS points from {files_processed} file(s).', 'success')
+
+        for error in errors:
+            flash(error, 'danger')
+
+        return redirect(url_for('main.gps_data'))
 
     return render_template('import_gpx.html')
 
