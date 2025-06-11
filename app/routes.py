@@ -4,8 +4,17 @@ from datetime import datetime, time, timedelta
 import gpxpy
 import pytz
 import requests
-from flask import (Blueprint, current_app, flash, jsonify, redirect,
-                   render_template, request, session, url_for)
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from flask_login import current_user, login_required, login_user, logout_user
 from gpxpy.geo import haversine_distance
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -860,7 +869,12 @@ def log_gps_position():
 
     # Validate required fields
     if not all([latitude, longitude, timestamp_str]):
-        current_app.logger.error("Missing required parameters for GPS logging. latitude: %s, longitude: %s, timestamp: %s", latitude, longitude, timestamp_str)
+        current_app.logger.error(
+            "Missing required parameters for GPS logging. latitude: %s, longitude: %s, timestamp: %s",
+            latitude,
+            longitude,
+            timestamp_str,
+        )
         return jsonify({"error": "Missing required parameters"}), 400
 
     try:
