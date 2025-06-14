@@ -916,7 +916,7 @@ def checkin():
 
     # Initialize empty lists for results
     combined_locations = []
-    max_distance_km = 1
+    max_distance_km = 0.5
 
     if lat and lon:
         # Convert to float
@@ -1067,7 +1067,7 @@ def checkin():
     )
 
 
-def get_foursquare_venues(lat, lon, radius=1000, limit=10):
+def get_foursquare_venues(lat, lon, radius=500, limit=10):
     """Fetch nearby venues from Foursquare API"""
     api_key = current_app.config.get("FOURSQUARE_API_KEY")
     if not api_key:
