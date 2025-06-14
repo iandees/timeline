@@ -255,6 +255,11 @@ def add_event():
     except ValueError:
         current_date = datetime.now(user_tz).date()
 
+    # Set default start time to current time when form is first loaded
+    if request.method == "GET" and not form.start_time.data:
+        # Set default to current time in user's timezone
+        form.start_time.data = datetime.now(user_tz).replace(tzinfo=None)
+
     # If location coordinates are provided, try to estimate start time and find nearby locations
     if lat and lon:
         try:
