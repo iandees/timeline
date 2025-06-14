@@ -14,7 +14,7 @@
         display: none;
     }
 
-    .map-overlay {
+    .location-map {
         position: absolute;
         bottom: 10px;
         right: 10px;
@@ -35,73 +35,85 @@
                     <h3 class="card-title mb-0">Edit Event</h3>
                 </div>
                 <div class="card-body">
-                    <form method="POST" action="{{ url_for('main.edit_event', event_id=event.id) }}">
+                    <form method="POST" id="event-form" action="{{ url_for('main.edit_event', event_id=event.id) }}">
+                        {{ form.hidden_tag() }}
+
                         <!-- Event Type -->
                         <div class="mb-3">
-                            <label for="event_type" class="form-label">Event Type</label>
-                            <select class="form-select" id="event_type" name="event_type" required>
-                                <option value="meal" {% if event.event_type == 'meal' %}selected{% endif %}>Meal</option>
-                                <option value="travel" {% if event.event_type == 'travel' %}selected{% endif %}>Travel</option>
-                                <option value="hygiene" {% if event.event_type == 'hygiene' %}selected{% endif %}>Hygiene</option>
-                                <option value="work" {% if event.event_type == 'work' %}selected{% endif %}>Work</option>
-                                <option value="social" {% if event.event_type == 'social' %}selected{% endif %}>Social</option>
-                                <option value="exercise" {% if event.event_type == 'exercise' %}selected{% endif %}>Exercise</option>
-                                <option value="other" {% if event.event_type == 'other' %}selected{% endif %}>Other</option>
-                            </select>
+                            {{ form.event_type.label(class="form-label") }}
+                            {{ form.event_type(class="form-select") }}
                         </div>
 
                         <!-- Event Title -->
                         <div class="mb-3">
-                            <label for="title" class="form-label">Title</label>
-                            <input type="text" class="form-control" id="title" name="title" value="{{ event.title }}" required autocapitalize="words">
-                        </div>
-
-                        <!-- Event Date -->
-                        <div class="mb-3">
-                            <label for="date" class="form-label">Date</label>
-                            <input type="date" class="form-control" id="date" name="date" value="{{ event_date }}" required>
+                            {{ form.title.label(class="form-label") }}
+                            {{ form.title(class="form-control", placeholder="Event Title", required=True, autocapitalize="words") }}
                         </div>
 
                         <!-- Event Times -->
                         <div class="row mb-3">
                             <div class="col">
-                                <label for="start_time" class="form-label">Start Time</label>
-                                <input type="time" class="form-control" id="start_time" name="start_time" value="{{ event_start_time }}" required>
+                                {{ form.start_time.label(class="form-label") }}
+                                {{ form.start_time(class="form-control", placeholder="Start Time", required=True) }}
                             </div>
                             <div class="col">
-                                <label for="end_time" class="form-label">End Time <span class="text-muted">(Optional)</span></label>
-                                <input type="time" class="form-control" id="end_time" name="end_time" value="{{ event_end_time or '' }}">
+                                {{ form.end_time.label(class="form-label") }}
+                                {{ form.end_time(class="form-control", placeholder="End Time (Optional)") }}
                             </div>
                         </div>
 
                         <!-- Location -->
-                        <div class="mb-3">
-                            <label for="location_id" class="form-label">Location <span class="text-muted">(Optional)</span></label>
-                            <div class="input-group mb-3">
-                                <select class="form-select" id="location_id" name="location_id">
-                                    <option value="">-- No Location --</option>
-                                    {% for location in locations %}
-                                    <option value="{{ location.id }}" {% if event.location_id == location.id %}selected{% endif %}>
-                                        {{ location.place_name }}
-                                    </option>
-                                    {% endfor %}
-                                    <option value="new">+ Add New Location</option>
-                                </select>
-                                <a href="{{ url_for('main.locations') }}" class="btn btn-outline-secondary">
-                                    <i class="bi bi-gear"></i> Manage
-                                </a>
+                        <div class="mb-3" id="location-select">
+                            {{ form.location_id.label(class="form-label") }}
+                            {{ form.location_id(class="form-select") }}
+                        </div>
+
+                        <!-- New Location Form (initially hidden) -->
+                        <div id="new-location-form" style="display: none;">
+                            <div class="card mb-3 border-primary">
+                                <div class="card-header bg-light">
+                                    <h5 class="mb-0">Add New Location</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        {{ form.place_name.label(class="form-label") }}
+                                        {{ form.place_name(class="form-control", placeholder="Location Name", autocapitalize="words") }}
+                                    </div>
+
+                                    <!-- Map for selecting location -->
+                                    <div class="position-relative">
+                                        <div id="location-map"></div>
+                                        <div class="location-map">
+                                            <button type="button" id="current-location" class="btn btn-sm btn-info">
+                                                <i class="bi bi-geo-alt"></i> Use My Location
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="text-muted mt-1 mb-3">
+                                        <small>Click on the map to set the location or use your current location</small>
+                                    </div>
+
+                                    <!-- Hidden inputs for coordinates -->
+                                    <div class="row">
+                                        <div class="col">
+                                            <!-- Hidden fields for new location -->
+                                            {{ form.new_location_lat(type="hidden") }}
+                                            {{ form.new_location_lon(type="hidden") }}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                         <!-- Notes -->
                         <div class="mb-3">
-                            <label for="notes" class="form-label">Notes <span class="text-muted">(Optional)</span></label>
-                            <textarea class="form-control" id="notes" name="notes" rows="3">{{ event.notes or '' }}</textarea>
+                            {{ form.notes.label(class="form-label") }}
+                            {{ form.notes(class="form-control", placeholder="Notes (Optional)", rows=3) }}
                         </div>
 
                         <!-- Submit and Cancel buttons -->
-                        <div class="d-flex justify-content-end">
-                            <a href="{{ url_for('main.timeline', date=event_date) }}" class="btn btn-outline-secondary me-2">Cancel</a>
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('main.timeline', date=event.start_time.strftime('%Y-%m-%d')) }}" class="btn btn-outline-secondary">Cancel</a>
                             <button type="submit" class="btn btn-primary">Save Changes</button>
                         </div>
                     </form>
@@ -151,8 +163,8 @@
                 // Update coordinates when marker is dragged
                 function updateCoordinates() {
                     const lngLat = marker.getLngLat();
-                    document.getElementById('latitude').value = lngLat.lat.toFixed(6);
-                    document.getElementById('longitude').value = lngLat.lng.toFixed(6);
+                    document.getElementById('new_location_lat').value = lngLat.lat.toFixed(6);
+                    document.getElementById('new_location_lon').value = lngLat.lng.toFixed(6);
                 }
 
                 marker.on('dragend', updateCoordinates);
@@ -176,8 +188,8 @@
                                 zoom: 14
                             });
 
-                            document.getElementById('latitude').value = lat.toFixed(6);
-                            document.getElementById('longitude').value = lng.toFixed(6);
+                            document.getElementById('new_location_lat').value = lat.toFixed(6);
+                            document.getElementById('new_location_lon').value = lng.toFixed(6);
                         }, function() {
                             alert('Unable to get your location');
                         });
@@ -186,6 +198,13 @@
                     }
                 });
             }
+        }
+
+        // Check if we should show the new location form initially
+        if (locationSelect.value === 'new') {
+            newLocationForm.style.display = 'block';
+            locationMap.style.display = 'block';
+            setTimeout(initializeMap, 100); // Short delay to ensure DOM is ready
         }
     });
 </script>

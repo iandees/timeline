@@ -414,75 +414,88 @@ def edit_event(event_id):
     # Get the event or return 404 if not found
     event = Event.query.filter_by(id=event_id, user_id=current_user.id).first_or_404()
 
-    if request.method == "POST":
-        # Extract form data
-        event_type = request.form.get("event_type")
-        title = request.form.get("title")
-        date_str = request.form.get("date")
-        start_time_str = request.form.get("start_time")
-        end_time_str = request.form.get("end_time")
-        location = request.form.get("location")
-        notes = request.form.get("notes")
+    # Create the form
+    form = EventForm(obj=event)
 
-        # Update event data
-        event.event_type = event_type
-        event.title = title
+    # Get all user locations for the select field
+    user_locations = Location.query.filter_by(user_id=current_user.id).all()
+    form.location_id.choices = [
+        ("new", "-- Add New Location --"),
+        *[(str(l.id), l.place_name) for l in user_locations],
+    ]
 
-        # Combine date and time strings
-        event.start_time = datetime.strptime(
-            f"{date_str} {start_time_str}", "%Y-%m-%d %H:%M"
+    user_tz = get_user_timezone()
+
+    if form.validate_on_submit():
+        # Update event data from form
+        event.event_type = form.event_type.data
+        event.title = form.title.data
+        event.notes = form.notes.data
+
+        # Handle start and end times
+        start_datetime_local = form.start_time.data
+        event.start_time = (
+            get_user_timezone().localize(start_datetime_local).astimezone(pytz.UTC)
         )
 
-        # Handle optional end time
-        if end_time_str:
-            event.end_time = datetime.strptime(
-                f"{date_str} {end_time_str}", "%Y-%m-%d %H:%M"
+        if form.end_time.data:
+            end_datetime_local = form.end_time.data
+            event.end_time = (
+                get_user_timezone().localize(end_datetime_local).astimezone(pytz.UTC)
             )
         else:
             event.end_time = None
 
-        # Update notes
-        event.notes = notes
+        # Handle location
+        location_id = form.location_id.data
 
-        # Handle location if provided
-        # This is simplified - you'd typically handle location differently
-        if location:
-            if event.location:
-                event.location.place_name = location
-            else:
+        # Handle new location creation
+        if location_id == "new":
+            place_name = form.place_name.data
+            latitude = form.new_location_lat.data
+            longitude = form.new_location_lon.data
+
+            # Validate new location data
+            if place_name and latitude and longitude:
+                # Create new location
                 new_location = Location(
-                    latitude=0.0,
-                    longitude=0.0,
-                    place_name=location,
                     user_id=current_user.id,
+                    place_name=place_name,
+                    latitude=float(latitude),
+                    longitude=float(longitude),
                 )
                 db.session.add(new_location)
-                db.session.flush()
+                db.session.flush()  # This assigns an ID to new_location
+
+                # Use the new location for this event
                 event.location_id = new_location.id
+            else:
+                # If new location data is incomplete, don't assign a location
+                event.location_id = None
+        elif location_id and location_id != "new":
+            event.location_id = int(location_id)
+        else:
+            event.location_id = None
 
         # Save changes
         db.session.commit()
         flash("Event updated successfully!", "success")
 
         # Redirect to the timeline for the event's date
+        date_str = start_datetime_local.strftime("%Y-%m-%d")
         return redirect(url_for("main.timeline", date=date_str))
 
-    # Format the date and times for the form
-    event_date = event.start_time.strftime("%Y-%m-%d")
-    event_start_time = event.start_time.strftime("%H:%M")
-    event_end_time = event.end_time.strftime("%H:%M") if event.end_time else None
+    # For GET requests, populate the form with event data
+    if request.method == "GET":
+        # Convert times from UTC to user's local timezone for display
+        local_start_time = event.start_time.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+        form.start_time.data = local_start_time.replace(tzinfo=None)
 
-    # Get location name if it exists
-    location_name = event.location.place_name if event.location else None
+        if event.end_time:
+            local_end_time = event.end_time.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+            form.end_time.data = local_end_time.replace(tzinfo=None)
 
-    return render_template(
-        "edit_event.html",
-        event=event,
-        event_date=event_date,
-        event_start_time=event_start_time,
-        event_end_time=event_end_time,
-        location_name=location_name,
-    )
+    return render_template("edit_event.html", form=form, event=event)
 
 
 @main_bp.route("/delete_event/<int:event_id>", methods=["GET", "POST"])
