@@ -46,7 +46,7 @@
                         <!-- Event Title -->
                         <div class="mb-3">
                             {{ form.title.label(class="form-label") }}
-                            {{ form.title(class="form-control", placeholder="Event Title", required=True) }}
+                            {{ form.title(class="form-control", placeholder="Event Title", required=True, autocapitalize="words") }}
                         </div>
 
                         <!-- Event Times -->
@@ -76,7 +76,7 @@
                                 <div class="card-body">
                                     <div class="mb-3">
                                         {{ form.place_name.label(class="form-label") }}
-                                        {{ form.place_name(class="form-control", placeholder="Location Name") }}
+                                        {{ form.place_name(class="form-control", placeholder="Location Name", autocapitalize="words") }}
                                     </div>
 
                                     <!-- Map for selecting location -->
